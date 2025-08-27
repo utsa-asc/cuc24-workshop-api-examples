@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head> </head>
+
+  <body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.1.0/papaparse.min.js"></script>
+    <script src="../../cascade-restapi.js"></script>
+    <script>
+      /* Exercise 1: Automate creating multiple simple testimonial blocks by reading from csv file (/workshop-scripts/csv/testimonials.csv) */
+
+      /* Step 1.1: Locate the testimonial block base asset (/_cms/base-assets/blocks/testimonial) and add the asset ID on line 18 */
+      /* Step 1.2: Add the testimonial block folder path (in the block folder) which will be where our new blocks will be created on line 19 */
+      /* Step 1.3: Add the testimonial block site name on line 20 */
+      /* Step 1.4: Follow instructor's demonstration as the script is reviewed */
+
+      var baseAssetID = "d39373a581736a1b3e3d88669cccf37b"; // fill in
+      var eventFolderPath = "events/calendar/2025"; // fill in
+      var eventSiteName = "UCC-VPAA-ASC-HALSTORE"; // fill in
+
+      // Note: Papa Parse is a free JS library that makes reading CSV files super easy
+      // https://www.papaparse.com
+
+      Papa.parse("csv/ucc-events-test-cleaned.csv", {
+        header: true,
+        encoding: "utf-8",
+        download: true,
+        skipEmptyLines: true,
+        transformHeader: function (h) {
+          return h.replace(/[\W_]+/g, "").trim();
+        },
+        complete: function (result) {
+          console.log(result);
+          importTestimonials(result.data);
+        },
+      });
+
+      function unicodeToHtmlEntities(str) {
+        // Since CSV is pre-cleaned, just handle remaining edge cases
+        str = str.replace(/\u00A0/g, " "); // Replace non-breaking spaces with regular spaces
+        
+        // Convert any remaining emojis to HTML entities (shouldn't be many after CSV cleaning)
+        return str.replace(/[\u{1F300}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{1F004}-\u{1F0CF}]|[\u{1F170}-\u{1F251}]/gu, function (char) {
+          const codePoint = char.codePointAt(0);
+          return `&#${codePoint};`;
+        });
+      }
+
+      function escapeHTML(text) {
+        const p = document.createElement('p');
+        p.innerText = text;
+        return p.innerHTML;
+      }
+
+      // Replace line breaks with <br/> tags
+      function convertBreaks(plainText) {
+          let htmlContent = plainText
+              .replace(/\r\n/g, '<br/>') // Windows line breaks
+              .replace(/\n/g, '<br/>')   // Unix/Mac line breaks
+              .replace(/\r/g, '<br/>');  // Old Mac line breaks
+          console.log('htmlContent:');
+          console.dir(htmlContent);
+          return htmlContent;
+      }
+
+      function importTestimonials(data) {
+        data.forEach(function (t) {
+          // Note: loop over the testimonials
+
+          // console.log(t);
+          // Note: output each testimonial as an object
+          let displayName = t.DisplayName;
+          let title = t.Title;
+          let summary = t.Summary;
+          let featured = t.Featured;
+          let eventStartDate = t.EventStartDate;
+          let eventEndDate = t.EventEndDate;
+          let eventStartTime = t.EventStartTime;
+          //check if a variable has a "/" in it
+          //find the date by looking for the first two characters of the eventStartDate variable after the  first "/" and before the second "/" and add a leading zero if needed
+          let eventDay = eventStartDate.substring(
+            eventStartDate.indexOf("/") + 1,
+            eventStartDate.lastIndexOf("/")
+          );
+          // console.log(eventDay);
+          if (eventDay.includes("/") || eventDay.length === 1) {
+            eventDay = "0" + eventDay.substring(0, 1);
+          }
+          let eventMonth = eventStartDate.substring(0, 2);
+          if (eventMonth.includes("/")) {
+            eventMonth = "0" + eventMonth.substring(0, 1);
+          }
+          let eventEndTime = t.EventEndTime;
+          let allDayEvent = t.AllDayEvent;
+          let defaultImage = t.DefaultImage;
+          let details = t.Details;
+          let location = t.Location;
+          let linkTitle = t.LinkTitle;
+          let linkURL = t.LinkURL;
+          let onlineEventLinkTitle = t.OnlineEventLinkTitle;
+          let onlineEventLink = t.OnlineEventLink;
+          // Note: output each testimonial individual property/value
+
+          var newPageName =
+            eventDay +
+            "-" +
+            displayName
+              .toLowerCase()
+              .replaceAll(/[^a-z0-9-]/gi, "-")
+              .trim();
+          newPageName = newPageName.replace(/-+/g, "-");
+          if (newPageName.endsWith("-")) {
+            newPageName = newPageName.substring(0, newPageName.length - 1);
+          }
+          // Note: format the testimonial quotee to the correct format needed for the block name
+
+          // console.log(newBlockName);
+          // Note: output newBlockName to verify its correct
+
+          // Note: copy block using asset path and folder path defined above
+          // #1 first we copy
+          copyAsset({
+            type: "page",
+            id: baseAssetID,
+            copyParameters: {
+              newName: newPageName,
+              destinationContainerIdentifier: {
+                type: "folder",
+                path: {
+                  path: eventFolderPath + "/" + eventMonth,
+                  siteName: eventSiteName,
+                },
+              },
+            },
+          })
+            .then(function (result) {
+              console.log(result);
+              // #2 then we read
+              readAsset({
+                type: "page",
+                path: eventFolderPath + "/" + eventMonth + "/" + newPageName,
+                siteName: eventSiteName,
+                // Note: the copy operation does NOT return a new asset ID so we use the same global vars we used to create the copy to read the copy
+              })
+                .then(function (result) {
+                  console.log(result);
+                  let newPageInfo = result.apiReturn.asset.page;
+                  newPageInfo.metadata.title = title;
+                  newPageInfo.metadata.summary = summary;
+                  newPageInfo.metadata.displayName = displayName;
+
+                  if (featured === "Y") {
+                    newPageInfo.structuredData.structuredDataNodes[0].text =
+                      "::CONTENT-XML-CHECKBOX::Yes";
+                  }
+                  details=escapeHTML(details);
+                  details=convertBreaks(details);
+                  console.log(details);
+
+                  newPageInfo.structuredData.structuredDataNodes[8].text = details;
+                  newPageInfo.structuredData.structuredDataNodes[9].text =
+                    location;
+
+                  newPageInfo.structuredData.structuredDataNodes[11].structuredDataNodes[0].text =
+                    linkTitle;
+                  newPageInfo.structuredData.structuredDataNodes[11].structuredDataNodes[3].text =
+                    linkURL;
+                  if (onlineEventLinkTitle && onlineEventLink) {
+                    newPageInfo.structuredData.structuredDataNodes[4].structuredDataNodes[2].text =
+                      "external";
+                  }
+
+                  newPageInfo.structuredData.structuredDataNodes[4].structuredDataNodes[0].text =
+                    onlineEventLinkTitle;
+                  newPageInfo.structuredData.structuredDataNodes[4].structuredDataNodes[5].text =
+                    onlineEventLink;
+
+                  let newEventStart = new Date(
+                    eventStartDate + " " + eventStartTime
+                  );
+                  newPageInfo.structuredData.structuredDataNodes[1].text =
+                    newEventStart.getTime();
+
+                  let newEventEnd = new Date(eventEndDate + " " + eventEndTime);
+                  newPageInfo.structuredData.structuredDataNodes[2].text =
+                    newEventEnd.getTime();
+
+                  //   if (recurringEvent === "N") {
+                  //     let newRepeatValue =
+                  //       newPageInfo.structuredData.structuredDataNodes[7]
+                  //         .structuredDataNodes[0];
+                  //     newRepeatValue.text = "Once";
+                  //   }
+
+                  if (allDayEvent === "Y") {
+                    newPageInfo.structuredData.structuredDataNodes[3].text =
+                      "::CONTENT-XML-CHECKBOX::Yes";
+                  }
+
+                  // Note: update the testimonial fields
+                  editAsset({
+                    asset: result.apiReturn,
+                  })
+                    .then(function (result) {
+                      console.log(result);
+                    })
+                    .catch(function (error) {
+                      console.log(error);
+                    });
+                  // Note: using the edit function, we send back the edited object
+                })
+                .catch(function (error) {
+                  console.log(error);
+                });
+            })
+            .catch(function (error) {
+              console.log(error);
+            });
+          console.log("----");
+          // Note: a separator to make the log easy to read
+        });
+      }
+    </script>
+  </body>
+</html>
