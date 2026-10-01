@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Block Relationship Report</title>
+    <style id="report-style">
+        :root {
+            --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --border: #d0d7de;
+            --head: #f6f8fa; --unused: #fff4e5; --error: #ffebe9; --chip: #ddf4ff; --chip-fg: #0550ae;
+            --link: #0969da;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --border: #30363d;
+                --head: #161b22; --unused: #3b2a12; --error: #4c1d1d; --chip: #0c2d6b; --chip-fg: #a5d6ff;
+                --link: #4493f8;
+            }
+        }
+        body { background: var(--bg); color: var(--fg); font: 16pt/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 24px; }
+        h1 { font-size: 26pt; margin: 0 0 4px; }
+        a { color: var(--link); }
+        .meta, .muted { color: var(--muted); }
+        .summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+        .stat { border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; min-width: 90px; }
+        .stat b { display: block; font-size: 24pt; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .toolbar input { font: inherit; flex: 1 1 320px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+        button { font: inherit; padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--head); color: var(--fg); cursor: pointer; }
+        button:disabled { opacity: .5; cursor: default; }
+        .table-wrap { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+        th { background: var(--head); white-space: nowrap; }
+        th[data-sort] { cursor: pointer; }
+        tr.unused td { background: var(--unused); }
+        tr.error td { background: var(--error); }
+        td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16pt; word-break: break-all; }
+        ul.rel { margin: 0; padding-left: 16px; }
+        ul.rel li { font-size: 16pt; margin: 2px 0; }
+        .chip { display: inline-block; background: var(--chip); color: var(--chip-fg); border-radius: 14px; padding: 1px 10px; margin: 2px 3px; font-size: 16pt; }
+        .badge { display: inline-block; font-weight: 600; font-size: 16pt; }
+    </style>
+</head>
+
+<body>
+    <script src="../../cascade-restapi.js"></script>
+
+    <h1>Block Relationship Report</h1>
+    <div class="meta" id="meta"></div>
+    <div class="summary" id="summary"></div>
+    <div class="toolbar">
+        <input type="search" id="filter" placeholder="Filter by name, path, tag, or page using the block…">
+        <button id="download-html" disabled>Download report (.html)</button>
+        <button id="download-csv" disabled>Download CSV</button>
+    </div>
+    <div class="muted" id="status">Starting…</div>
+    <div class="table-wrap" id="report"></div>
+
+    <script>
+        /* Note: This script is READ ONLY. It crawls a folder (and its subfolders) of blocks and reports, for each block:
+                 its tags and the related assets (pages, blocks, etc.) that use it, via listSubscribers.
+                 Blocks with zero subscribers are highlighted as cleanup candidates.
+                 Caution: "unused" only means Cascade has no recorded relationship. Blocks pulled in by path from
+                 Velocity formats or index blocks will not show up as subscribers, so review before deleting. */
+
+        /* Step 1: Add the site name and the folder path of the blocks you want to audit */
+        /* Step 2: Save, open this file in the browser (served from http://localhost:8888) and wait for the crawl to finish */
+        /* Step 3: Use "Download report" to save a standalone copy. Reports are downloaded files, do not commit them */
+
+        var siteName = "PROVOST-VPAA-PROVWEB"; // fill in
+        var folderPath = "about/_profile-blocks"; // fill in
+        var recursive = true; // crawl subfolders
+        var maxConcurrent = 5; // max API calls in flight at once
+        var timeoutMs = 30000; // give up on a single API call after this long
+
+        // Note: the library promises never settle on a network failure, so every call gets a timeout
+        function withTimeout(promise, label) {
+            return new Promise(function(resolve, reject) {
+                var timer = setTimeout(function() {
+                    reject({ error: "Timed out after " + timeoutMs / 1000 + "s: " + label });
+                }, timeoutMs);
+                promise.then(function(value) {
+                    clearTimeout(timer);
+                    resolve(value);
+                }, function(error) {
+                    clearTimeout(timer);
+                    reject(error);
+                });
+            });
+        }
+
+        // Note: a simple limiter so we don't fire hundreds of requests at the CMS at once
+        var queue = [];
+        var active = 0;
+        function api(fn) {
+            return new Promise(function(resolve, reject) {
+                queue.push({ fn: fn, resolve: resolve, reject: reject });
+                nextCall();
+            });
+        }
+        function nextCall() {
+            if (active >= maxConcurrent || queue.length === 0) return;
+            active++;
+            var job = queue.shift();
+            job.fn().then(job.resolve, job.reject).finally(function() {
+                active--;
+                nextCall();
+            });
+            nextCall();
+        }
+
+        function errorMessage(e) {
+            return (e && (e.error || e.message)) || String(e);
+        }
+
+        function cmsLink(id, type) {
+            // Note: block_XHTML_DATADEFINITION etc. all open as type "block" in the CMS UI
+            var baseType = type.indexOf("block") === 0 ? "block" : type;
+            return cmsUrl + "entity/open.act?id=" + encodeURIComponent(id) + "&type=" + encodeURIComponent(baseType);
+        }
+
+        var blockTypeLabels = {
+            xhtmlDataDefinitionBlock: "Data Definition",
+            feedBlock: "Feed",
+            indexBlock: "Index",
+            textBlock: "Text",
+            xmlBlock: "XML",
+            twitterFeedBlock: "Twitter Feed"
+        };
+
+        var state = { folders: 0, blocks: [], done: 0, finished: false, sortKey: "usedBy", sortDir: 1 };
+
+        /* Crawl: read folders, collect block identifiers, descend into subfolders */
+        function crawlFolder(identifier) {
+            return api(function() {
+                return withTimeout(readAsset(Object.assign({ type: "folder" }, identifier)), "folder " + (identifier.path || identifier.id));
+            }).then(function(result) {
+                state.folders++;
+                var children = result.apiReturn.asset.folder.children || [];
+                var subfolders = [];
+                children.forEach(function(child) {
+                    if (child.recycled) return;
+                    if (child.type.indexOf("block") === 0) {
+                        state.blocks.push({ id: child.id, type: child.type, path: child.path.path });
+                    } else if (child.type === "folder" && recursive) {
+                        subfolders.push(crawlFolder({ id: child.id }));
+                    }
+                });
+                renderStatus();
+                return Promise.all(subfolders);
+            }).catch(function(error) {
+                state.blocks.push({ id: identifier.id || "", type: "folder", path: identifier.path || identifier.id, error: "Could not read folder: " + errorMessage(error) });
+            });
+        }
+
+        /* Audit a block: read it for name, subtype and tags, then list the assets that use it */
+        function auditBlock(block) {
+            var read = api(function() {
+                return withTimeout(readAsset({ type: "block", id: block.id }), "read " + block.path);
+            }).then(function(result) {
+                var key = Object.keys(result.apiReturn.asset).find(function(k) { return /Block$/.test(k); });
+                var asset = result.apiReturn.asset[key];
+                block.name = asset.name;
+                block.path = asset.path || block.path;
+                block.label = key === "xhtmlDataDefinitionBlock" && !asset.structuredData ? "XHTML" : (blockTypeLabels[key] || key);
+                block.tags = (asset.tags || []).map(function(tag) { return tag.name; });
+            });
+            var subscribers = api(function() {
+                return withTimeout(listSubscribers({ type: "block", id: block.id }), "subscribers " + block.path);
+            }).then(function(result) {
+                var all = (result.apiReturn.subscribers || []).map(function(s) { s.manual = false; return s; })
+                    .concat((result.apiReturn.manualSubscribers || []).map(function(s) { s.manual = true; return s; }));
+                // Note: pages first since those are what we care about most when cleaning up, then by path
+                var order = { page: 0, block: 1 };
+                block.usedBy = all.filter(function(s) { return !s.recycled; }).sort(function(a, b) {
+                    var x = a.type in order ? order[a.type] : 2, y = b.type in order ? order[b.type] : 2;
+                    return x - y || subscriberPath(a).localeCompare(subscriberPath(b));
+                });
+            });
+            return Promise.all([read, subscribers]).catch(function(error) {
+                block.error = errorMessage(error);
+            }).then(function() {
+                state.done++;
+                renderStatus();
+            });
+        }
+
+        /* Rendering */
+        function esc(value) {
+            return String(value == null ? "" : value).replace(/[&<>"']/g, function(c) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+            });
+        }
+
+        function renderStatus() {
+            var text = "Crawled " + state.folders + " folder(s), found " + state.blocks.filter(isBlock).length + " block(s)";
+            if (state.blocks.length) text += ", audited " + state.done + "/" + state.blocks.filter(isBlock).length;
+            document.getElementById("status").textContent = state.finished ? "" : text + "…";
+        }
+
+        function isBlock(b) { return b.type !== "folder"; }
+        function usedCount(b) { return b.usedBy ? b.usedBy.length : -1; }
+
+        function summaryHTML() {
+            var blocks = state.blocks.filter(isBlock);
+            var stats = [
+                ["Blocks", blocks.length],
+                ["Unused", blocks.filter(function(b) { return !b.error && usedCount(b) === 0; }).length],
+                ["In use", blocks.filter(function(b) { return !b.error && usedCount(b) > 0; }).length],
+                ["Untagged", blocks.filter(function(b) { return !b.error && b.tags && b.tags.length === 0; }).length],
+                ["Errors", state.blocks.filter(function(b) { return b.error; }).length]
+            ];
+            return stats.map(function(s) {
+                return '<div class="stat"><b>' + s[1] + '</b>' + s[0] + '</div>';
+            }).join("");
+        }
+
+        // Note: subscriber identifiers look like { id, type, path: { path, siteId, siteName }, recycled }
+        function subscriberPath(s) {
+            var site = s.path && s.path.siteName && s.path.siteName !== siteName ? s.path.siteName + ":" : "";
+            return site + ((s.path && s.path.path) || s.id);
+        }
+
+        function relatedList(items) {
+            return '<ul class="rel">' + items.map(function(item) {
+                var label = esc(item.type) + " " + esc(subscriberPath(item));
+                var link = item.id ? '<a href="' + esc(cmsLink(item.id, item.type)) + '" target="_blank">' + label + "</a>" : label;
+                var extra = item.manual ? ' <span class="muted">(manual)</span>' : "";
+                return "<li>" + link + extra + "</li>";
+            }).join("") + "</ul>";
+        }
+
+        var columns = [
+            { key: "name", label: "Block name", value: function(b) { return b.name || ""; } },
+            { key: "path", label: "Path", value: function(b) { return b.path || ""; } },
+            { key: "tags", label: "Tags", value: function(b) { return (b.tags || []).join(", "); } },
+            { key: "usedBy", label: "Used by", value: function(b) { return usedCount(b); } }
+        ];
+
+        function sortedRows() {
+            var col = columns.find(function(c) { return c.key === state.sortKey; });
+            return state.blocks.slice().sort(function(a, b) {
+                // Note: errors always first so they can't be missed, then the chosen sort
+                if (!!a.error !== !!b.error) return a.error ? -1 : 1;
+                var x = col.value(a), y = col.value(b);
+                var cmp = typeof x === "number" ? x - y : String(x).localeCompare(String(y));
+                return cmp * state.sortDir || String(a.path).localeCompare(String(b.path));
+            });
+        }
+
+        function matchesFilter(b, term) {
+            if (!term) return true;
+            var haystack = [b.name, b.path, b.label, b.type, b.error]
+                .concat(b.tags || [])
+                .concat((b.usedBy || []).map(subscriberPath))
+                .join(" ").toLowerCase();
+            return haystack.indexOf(term) !== -1;
+        }
+
+        function tableHTML(rows) {
+            var head = "<tr>" + columns.map(function(c) {
+                var arrow = c.key === state.sortKey ? (state.sortDir === 1 ? " ▲" : " ▼") : "";
+                return c.value ? '<th data-sort="' + c.key + '">' + c.label + arrow + "</th>" : "<th>" + c.label + "</th>";
+            }).join("") + "</tr>";
+            var body = rows.map(function(b) {
+                // Note: the path doubles as the link to open the asset in the CMS
+                var path = b.id ? '<a href="' + esc(cmsLink(b.id, b.type)) + '" target="_blank">' + esc(b.path) + "</a>" : esc(b.path);
+                if (b.error && !b.name) {
+                    return '<tr class="error"><td>' + esc(b.type === "folder" ? "(folder)" : "—") + '</td><td class="path">' + path + "</td>" +
+                        '<td colspan="2"><span class="badge">Error:</span> ' + esc(b.error) + "</td></tr>";
+                }
+                var cls = b.error ? "error" : (usedCount(b) === 0 ? "unused" : "");
+                var tags = b.tags && b.tags.length ? b.tags.map(function(t) { return '<span class="chip">' + esc(t) + "</span>"; }).join("") : '<span class="muted">untagged</span>';
+                var used;
+                if (b.error) {
+                    used = '<span class="badge">Error:</span> ' + esc(b.error);
+                } else if (usedCount(b) === 0) {
+                    used = '<span class="badge">Unused</span>';
+                } else {
+                    used = '<span class="badge">' + usedCount(b) + "</span>" + relatedList(b.usedBy);
+                }
+                return '<tr class="' + cls + '"><td>' + esc(b.name) + '</td><td class="path">' + path + "</td><td>" + tags + "</td><td>" + used + "</td></tr>";
+            }).join("");
+            return "<table><thead>" + head + "</thead><tbody>" + body + "</tbody></table>";
+        }
+
+        function renderReport() {
+            var term = document.getElementById("filter").value.trim().toLowerCase();
+            document.getElementById("summary").innerHTML = summaryHTML();
+            document.getElementById("report").innerHTML = tableHTML(sortedRows().filter(function(b) { return matchesFilter(b, term); }));
+        }
+
+        /* Downloads: a standalone HTML snapshot and a CSV */
+        function timestamp() {
+            return new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+        }
+
+        function saveFile(content, type, filename) {
+            var link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([content], { type: type }));
+            link.download = filename;
+            link.click();
+            setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
+        }
+
+        function fileBase() {
+            return "block-report-" + siteName + "-" + folderPath.replace(/^\/|\/$/g, "").replace(/\//g, "_") + "-" + timestamp();
+        }
+
+        function downloadHTML() {
+            var css = document.getElementById("report-style").textContent;
+            var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+                "<title>Block Relationship Report</title><style>" + css + "</style></head><body>" +
+                "<h1>Block Relationship Report</h1>" +
+                '<div class="meta">' + document.getElementById("meta").innerHTML + "</div>" +
+                '<div class="summary">' + summaryHTML() + "</div>" +
+                '<div class="table-wrap">' + tableHTML(sortedRows()) + "</div></body></html>";
+            saveFile(html, "text/html", fileBase() + ".html");
+        }
+
+        function downloadCSV() {
+            function cell(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
+            function rel(items) {
+                return (items || []).map(function(s) { return s.type + " " + subscriberPath(s); }).join("; ");
+            }
+            var lines = [["Block name", "Type", "Path", "ID", "CMS link", "Tags", "Used by", "Related assets", "Error"].map(cell).join(",")];
+            sortedRows().forEach(function(b) {
+                lines.push([b.name, b.label || b.type, b.path, b.id, b.id ? cmsLink(b.id, b.type) : "", (b.tags || []).join("; "),
+                    usedCount(b) < 0 ? "" : usedCount(b), rel(b.usedBy), b.error].map(cell).join(","));
+            });
+            saveFile(lines.join("\r\n"), "text/csv", fileBase() + ".csv");
+        }
+
+        /* Run */
+        document.getElementById("meta").innerHTML = "Site <b>" + esc(siteName) + "</b> · Folder <b>" + esc(folderPath) + "</b>" +
+            (recursive ? " (including subfolders)" : "") + " · Generated " + esc(new Date().toLocaleString());
+        document.getElementById("filter").addEventListener("input", renderReport);
+        document.getElementById("report").addEventListener("click", function(event) {
+            var key = event.target.getAttribute && event.target.getAttribute("data-sort");
+            if (!key) return;
+            state.sortDir = state.sortKey === key ? -state.sortDir : 1;
+            state.sortKey = key;
+            renderReport();
+        });
+        document.getElementById("download-html").addEventListener("click", downloadHTML);
+        document.getElementById("download-csv").addEventListener("click", downloadCSV);
+
+        crawlFolder({ path: folderPath, siteName: siteName }).then(function() {
+            return Promise.all(state.blocks.filter(function(b) { return isBlock(b) && !b.error; }).map(auditBlock));
+        }).then(function() {
+            state.finished = true;
+            renderStatus();
+            renderReport();
+            document.getElementById("download-html").disabled = false;
+            document.getElementById("download-csv").disabled = false;
+            console.log("Block report data:", state.blocks);
+        });
+    </script>
+</body>
+
+</html>

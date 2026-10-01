@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Profile Block Standards</title>
+    <style>
+        :root {
+            --bg: #f6f7f9; --surface: #ffffff; --fg: #1b2330; --muted: #566174; --line: #d9dee6;
+            --navy: #0c2340; --accent: #b8431a; --accent-soft: #fdeee7;
+            --good: #1c6b3a; --good-bg: #e7f5ec; --bad: #a3231f; --bad-bg: #fcebea;
+            --code-bg: #eef1f5; --note-bg: #fff7e0; --note-line: #e3b93c;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --bg: #0f141b; --surface: #171e28; --fg: #e5e9f0; --muted: #9aa5b6; --line: #2b3544;
+                --navy: #c9d8ee; --accent: #f2875a; --accent-soft: #2c1d17;
+                --good: #6fd493; --good-bg: #14301f; --bad: #ff8c86; --bad-bg: #38191a;
+                --code-bg: #212a37; --note-bg: #2e2810; --note-line: #8a7120; color-scheme: dark;
+            }
+        }
+        :root[data-theme="dark"] {
+            --bg: #0f141b; --surface: #171e28; --fg: #e5e9f0; --muted: #9aa5b6; --line: #2b3544;
+            --navy: #c9d8ee; --accent: #f2875a; --accent-soft: #2c1d17;
+            --good: #6fd493; --good-bg: #14301f; --bad: #ff8c86; --bad-bg: #38191a;
+            --code-bg: #212a37; --note-bg: #2e2810; --note-line: #8a7120; color-scheme: dark;
+        }
+
+        * { box-sizing: border-box; }
+        body { background: var(--bg); color: var(--fg); margin: 0; padding: 40px 20px 72px;
+            font: 18px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+        .page { max-width: 880px; margin: 0 auto; display: grid; gap: 40px; }
+        h1, h2, h3 { color: var(--navy); line-height: 1.25; text-wrap: balance; margin: 0; }
+        h1 { font-size: 2.1rem; }
+        h2 { font-size: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+        h3 { font-size: 1.15rem; }
+        p { margin: 0; }
+        a { color: var(--accent); }
+        code { font: 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg);
+            padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+        .muted { color: var(--muted); }
+
+        header { display: grid; gap: 10px; }
+        .eyebrow { font-size: .78rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--accent); }
+        .lede { font-size: 1.1rem; max-width: 62ch; }
+
+        section { display: grid; gap: 20px; min-width: 0; }
+
+        /* Findings table */
+        .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+        table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+        th { font-size: .8rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--code-bg); }
+        td.num, th.num { text-align: right; }
+        tr:last-child td { border-bottom: 0; }
+        tfoot td { font-weight: 700; background: var(--code-bg); }
+
+        .callout { background: var(--note-bg); border-left: 4px solid var(--note-line); padding: 14px 18px; border-radius: 0 8px 8px 0; }
+
+        /* Numbered standards: the numbers are references ("see Standard 3"), so they stay */
+        ol.standards { list-style: none; counter-reset: std; margin: 0; padding: 0; display: grid; gap: 18px; }
+        ol.standards > li { counter-increment: std; background: var(--surface); border: 1px solid var(--line);
+            border-radius: 10px; padding: 20px 22px 20px 22px; display: grid; gap: 12px; min-width: 0; }
+        ol.standards > li > h3::before { content: counter(std); display: inline-block; min-width: 1.9em; height: 1.9em;
+            line-height: 1.9em; text-align: center; margin-right: 10px; border-radius: 50%;
+            background: var(--accent-soft); color: var(--accent); font-size: .9rem; }
+        .evidence { font-size: .95rem; color: var(--muted); }
+        .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+        .pair > div { border-radius: 8px; padding: 10px 14px; min-width: 0; }
+        .pair .good { background: var(--good-bg); }
+        .pair .bad { background: var(--bad-bg); }
+        .pair .label { display: block; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+        .good .label { color: var(--good); }
+        .bad .label { color: var(--bad); }
+        .pair code { background: transparent; padding: 0; display: block; margin: 2px 0; }
+
+        ul.practices { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+        ul.practices > li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; display: grid; gap: 6px; }
+        ul.practices h3 { font-size: 1.05rem; }
+
+        pre { margin: 0; background: var(--code-bg); padding: 12px 16px; border-radius: 8px; overflow-x: auto; font-size: .9rem; }
+        pre code { background: none; padding: 0; }
+
+        ul.checklist { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+        footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+        @media (max-width: 520px) { body { font-size: 17px; padding-top: 28px; } h1 { font-size: 1.7rem; } }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+
+        <header>
+            <span class="eyebrow">Maintenance guide</span>
+            <h1>Profile Block Standards</h1>
+            <p class="lede">How to name and look after the profile blocks in <code>about/_profile-blocks</code> on the <code>PROVOST-VPAA-PROVWEB</code> site, so the next person who edits them can follow one pattern.</p>
+            <p class="muted">Based on the block relationship report generated 1 October 2026. Counts below come from that report and will drift, so re-run it (see Practice 5) before acting on them.</p>
+        </header>
+
+        <section>
+            <h2>What the report found</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Folder</th><th class="num">Blocks</th><th class="num">Unused</th><th class="num">Tagged</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>_staff</code></td><td class="num">71</td><td class="num">45</td><td class="num">5</td></tr>
+                        <tr><td><code>_university_council</code></td><td class="num">29</td><td class="num">13</td><td class="num">3</td></tr>
+                        <tr><td><code>_academic_council</code></td><td class="num">14</td><td class="num">0</td><td class="num">5</td></tr>
+                        <tr><td><code>_deans</code></td><td class="num">12</td><td class="num">3</td><td class="num">0</td></tr>
+                    </tbody>
+                    <tfoot>
+                        <tr><td>Total</td><td class="num">126</td><td class="num">61</td><td class="num">13</td></tr>
+                    </tfoot>
+                </table>
+            </div>
+            <ul class="checklist">
+                <li>Names mix styles: 79 are lowercase, 33 start with a capital letter, and 14 start with a number.</li>
+                <li>Four people have a block in two folders, and two more have a second block with a <code>-personnel</code> suffix.</li>
+                <li>Of the 65 blocks in use, 45 are on one page, 14 on two pages, and 6 on three. Only three pages use any of them: <code>about/personnel</code>, <code>about/academic-council</code> and <code>about/academic-executive-council</code>.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>Naming standards</h2>
+            <ol class="standards">
+                <li>
+                    <h3>Lowercase letters, numbers and hyphens only</h3>
+                    <p>No capitals, spaces, underscores or accented characters. Names then sort the same everywhere and are safe in URLs and scripts.</p>
+                    <p class="evidence">Today: 33 names start with a capital letter and one contains an accent.</p>
+                    <div class="pair">
+                        <div class="good"><span class="label">Use</span><code>gee-cie</code><code>guerra-norma</code></div>
+                        <div class="bad"><span class="label">Avoid</span><code>Gee-Cié</code><code>Guerra-Norma</code></div>
+                    </div>
+                </li>
+                <li>
+                    <h3>Surname, then given name: <code>lastname-firstname</code></h3>
+                    <p>The hyphen separates the surname from the given name and nothing else. Join compound surnames and compound given names without hyphens.</p>
+                    <p class="evidence">Today: 106 of 126 names already follow the two-part pattern. 20 have three or four parts.</p>
+                    <div class="pair">
+                        <div class="good"><span class="label">Use</span><code>ramosharwood-roel</code><code>howardrappaport-debbie</code></div>
+                        <div class="bad"><span class="label">Avoid</span><code>ramos-harwood-roel</code><code>Garza-John-David</code></div>
+                    </div>
+                </li>
+                <li>
+                    <h3>Name the person, not the page, year or position</h3>
+                    <p>No page names, numbers or years in the name. Someone's seat, page or list order changes, and then the name is wrong. Set the display order on the page instead of in the block name. An office that changes hands, such as <code>sga-president</code>, may be named for the office.</p>
+                    <p class="evidence">Today: <code>-personnel</code> suffixes on two blocks, <code>wilkerson-steve26</code>, and 14 numbered blocks in <code>_academic_council</code> where numbers 04, 08 and 11 are missing from the sequence.</p>
+                    <div class="pair">
+                        <div class="good"><span class="label">Use</span><code>meersman-katie</code><code>trepal-heather</code></div>
+                        <div class="bad"><span class="label">Avoid</span><code>meersman-katie-personnel</code><code>12-trepal-heather</code><code>wilkerson-steve26</code></div>
+                    </div>
+                </li>
+                <li>
+                    <h3>One block per person, attached wherever it is needed</h3>
+                    <p>If someone appears on more than one page, attach the same block to each page. Do not copy it. Give each person one home folder, based on their main role. Editing the one block then updates every page.</p>
+                    <p class="evidence">Today: <code>wilkerson-steve</code>, <code>cigarroa-francisco</code>, <code>halbesleben-jonathon</code> and <code>xiong-jinjun</code> each exist in two folders. <code>Del-Toro-Debra</code> and <code>deltoro-debra-personnel</code> look like the same person, and so do <code>meersman-katie</code> and <code>meersman-katie-personnel</code>. In each pair one block is in use and the other is not.</p>
+                </li>
+                <li>
+                    <h3>Follow the existing folder pattern</h3>
+                    <p>Group folders start with an underscore, are lowercase, and use underscores between words. Add a new group folder only when a group is a real audience, such as a council, and not for a single page.</p>
+                    <div class="pair">
+                        <div class="good"><span class="label">Use</span><code>_university_council</code><code>_deans</code></div>
+                        <div class="bad"><span class="label">Avoid</span><code>UniversityCouncil</code><code>deans-2026</code></div>
+                    </div>
+                </li>
+            </ol>
+        </section>
+
+        <section>
+            <h2>Maintenance practices</h2>
+            <ul class="practices">
+                <li>
+                    <h3>1. Treat "Unused" as a lead, not a verdict</h3>
+                    <p>The report only shows relationships Cascade has recorded. A format or template that pulls a block in by path will not appear. Before removing a block, search the site's formats for its path and ask the page owner. Then delete it to the recycle bin, not permanently, and leave it there for a full term.</p>
+                </li>
+                <li>
+                    <h3>2. Remove people from the page first, then the block</h3>
+                    <p>When someone leaves a role, take them off the page, re-run the report, and delete the block once it shows Unused. 61 of 126 blocks (48%) are unused today. Some are likely people who have left, and some are duplicates.</p>
+                </li>
+                <li>
+                    <h3>3. Edit in place; create new blocks by copying a clean one</h3>
+                    <p>To change a name, title or photo, edit the existing block. To add a person, copy the profile base asset (or a clean block if there is no base asset) and then rename it to follow the standards above. This is the copy, read, edit pattern from <code>chained-operations/07.create-from-base-asset.html</code>. Rename with Move instead of deleting and recreating, then re-run the report and check formats that mention the old path.</p>
+                </li>
+                <li>
+                    <h3>4. Use tags on purpose</h3>
+                    <p>113 of 126 blocks have no tag, and the only tag in use is <code>ruby</code>, on 13 blocks across four folders. The report cannot say what it means. Record its meaning in the table below and tag new blocks when they are created.</p>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Tag</th><th>Meaning</th><th>Applied by</th></tr></thead>
+                            <tbody><tr><td><code>ruby</code></td><td class="muted">To be documented by the owner of these blocks</td><td class="muted">—</td></tr></tbody>
+                        </table>
+                    </div>
+                </li>
+                <li>
+                    <h3>5. Re-run the report each term and before any bulk cleanup</h3>
+                    <p>Start the local server, open the report page, and check that <code>siteName</code> and <code>folderPath</code> at the top of the script match this folder. The report only reads, so it is safe to run at any time. Use "Download report" to keep a copy, and do not commit downloaded reports to the repository.</p>
+                    <pre><code>docker-compose up -d
+# then open
+http://localhost:8888/examples/reporting-operations/17.block-relationship-report.html</code></pre>
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>Suggested first cleanup</h2>
+            <ul class="checklist">
+                <li>Resolve the duplicates: the four people with blocks in two folders, and the two <code>-personnel</code> pairs. Keep the block that is in use, or point the pages at one block, before deleting the other.</li>
+                <li>Rename to standard: 33 capitalised names, the accented name, <code>wilkerson-steve26</code>, and the <code>-personnel</code> names.</li>
+                <li>Review the 61 unused blocks as in Practice 1, starting with <code>_staff</code> (45), then <code>_university_council</code> (13) and <code>_deans</code> (3).</li>
+                <li>Agree what <code>ruby</code> means, then tag consistently.</li>
+            </ul>
+            <div class="callout">Nothing in this guide changes any block. The report and this page are read-only. Renames, merges and deletions are done by hand in Cascade after the checks above.</div>
+        </section>
+
+        <footer>Source: <code>block-report-PROVOST-VPAA-PROVWEB-about__profile-blocks-2026-10-01-18-30-51.html</code> · Report tool: <code>17.block-relationship-report.html</code></footer>
+    </div>
+</body>
+
+</html>
