@@ -39,8 +39,8 @@
 
         readAsset({
             type: "folder",
-            path: "/section-00", // fill in
-            siteName: "VPAA-VPGI-HHandbook-WWWROOT" // fill in
+            path: "/about/_profile-blocks", // fill in
+            siteName: "PROVOST-VPAA-PROVWEB" // fill in
         }).then(function(result) {
             console.log(result);
             // Note: result is the object the read function returns
@@ -51,7 +51,20 @@
                     type: child.type,
                     id: child.id,
                 }).then(function(result) {
-                    console.log(result);
+                    console.log("READ ASSET:");
+                    console.log(result.apiReturn.asset);
+                    var oldURL = result.apiReturn.asset.symlink.linkURL;
+                    let liveURL = oldURL.replace("https://port0.utsa.edu/handbook", "https://global.utsa.edu/students/handbook");
+                    result.apiReturn.asset.symlink.linkURL = liveURL;
+                    editAsset({
+                        asset: result.apiReturn
+                    }).then(function(result) {
+                        console.log("SYMLINKEDITED");
+                        console.log(result);
+                    }).catch(function(error) {
+                        console.log("EDIT FAILED");
+                        console.log(error);
+                    });
                 }).catch(function(error) {
                     console.log(error);
                 });
