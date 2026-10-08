@@ -9,13 +9,13 @@
         :root {
             --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --border: #d0d7de;
             --head: #f6f8fa; --unused: #fff4e5; --error: #ffebe9; --chip: #ddf4ff; --chip-fg: #0550ae;
-            --link: #0969da;
+            --link: #0969da; --dup: #b42318;
         }
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --border: #30363d;
                 --head: #161b22; --unused: #3b2a12; --error: #4c1d1d; --chip: #0c2d6b; --chip-fg: #a5d6ff;
-                --link: #4493f8;
+                --link: #4493f8; --dup: #ff7b72;
             }
         }
         body { background: var(--bg); color: var(--fg); font: 16pt/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 24px; }
@@ -44,8 +44,10 @@
         .cleanup h2 { font-size: 20pt; margin: 12px 0 4px; }
         .cleanup ul { padding-left: 24px; margin: 8px 0; }
         .cleanup li { margin: 6px 0; }
-        .cleanup code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
+        code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
         .cleanup .callout { border-left: 6px solid var(--link); padding: 4px 14px; margin-top: 12px; }
+        tr.dup td:first-child { border-left: 10px solid var(--dup); }
+        .dup-badge { display: inline-block; background: var(--dup); color: #fff; font-weight: 700; font-size: 14pt; padding: 0 10px; margin-top: 4px; }
         .badge { display: inline-block; font-weight: 600; font-size: 16pt; }
     </style>
 </head>
@@ -59,7 +61,7 @@
         <h2>Suggested first cleanup</h2>
         <p class="muted">For the profile blocks in <code>about/_profile-blocks</code>, based on the 1 October 2026 run (126 blocks). These counts are a snapshot and do not update with the table below.</p>
         <ul>
-            <li>Resolve the duplicates: the four people with blocks in two folders, and the two <code>-personnel</code> pairs. Keep the block that is in use, or point the pages at one block, before deleting the other.</li>
+            <li>Resolve the duplicates: the four people with blocks in two folders, and the two <code>-personnel</code> pairs. Keep the block that is in use, or point the pages at one block, before deleting the other. Blocks that share a Full name are marked Duplicate in the table.</li>
             <li>Rename to standard: 33 capitalised names, the accented name, <code>wilkerson-steve26</code>, and the <code>-personnel</code> names.</li>
             <li>Review the 61 unused blocks, following Practice 1 in the profile block standards guide (<code>profile-block-standards.html</code>), starting with <code>_staff</code> (45), then <code>_university_council</code> (13) and <code>_deans</code> (3).</li>
             <li>Agree what <code>ruby</code> means, then tag consistently.</li>
@@ -73,6 +75,7 @@
         <button id="download-csv" disabled>Download CSV</button>
     </div>
     <div class="muted" id="status">Starting…</div>
+    <div class="muted" id="skipped"></div>
     <div class="table-wrap" id="report"></div>
 
     <script>
@@ -89,6 +92,8 @@
         var siteName = "PROVOST-VPAA-PROVWEB"; // fill in
         var folderPath = "about/_profile-blocks"; // fill in
         var recursive = true; // crawl subfolders
+        var skipUnpublishedFolders = true; // ignore folders (and everything inside them) marked not indexable or not publishable
+        var fullNameField = ""; // identifier of the "Full Name" field in the data definition; leave blank to auto-detect (full-name, fullName, full_name...)
         var maxConcurrent = 5; // max API calls in flight at once
         var timeoutMs = 30000; // give up on a single API call after this long
 
@@ -147,7 +152,7 @@
             twitterFeedBlock: "Twitter Feed"
         };
 
-        var state = { folders: 0, blocks: [], done: 0, finished: false, sortKey: "usedBy", sortDir: 1 };
+        var state = { folders: 0, skipped: [], blocks: [], done: 0, finished: false, sortKey: "usedBy", sortDir: 1 };
 
         /* Crawl: read folders, collect block identifiers, descend into subfolders */
         function crawlFolder(identifier) {
@@ -155,7 +160,17 @@
                 return withTimeout(readAsset(Object.assign({ type: "folder" }, identifier)), "folder " + (identifier.path || identifier.id));
             }).then(function(result) {
                 state.folders++;
-                var children = result.apiReturn.asset.folder.children || [];
+                var folder = result.apiReturn.asset.folder;
+                // Note: both flags default to true, so only an explicit false counts
+                var reasons = [];
+                if (folder.shouldBeIndexed === false) reasons.push("not indexable");
+                if (folder.shouldBePublished === false) reasons.push("not publishable");
+                if (skipUnpublishedFolders && reasons.length) {
+                    state.skipped.push({ path: folder.path || identifier.path || identifier.id, reasons: reasons.join(", ") });
+                    renderStatus();
+                    return;
+                }
+                var children = folder.children || [];
                 var subfolders = [];
                 children.forEach(function(child) {
                     if (child.recycled) return;
@@ -172,6 +187,47 @@
             });
         }
 
+        /* Full name: find the "Full Name" text field in the block's structured data, then mark blocks that share a value */
+        function normId(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+        function findFullName(asset) {
+            var found = "";
+            (function walk(nodes) {
+                (nodes || []).forEach(function(node) {
+                    if (found) return;
+                    var match = fullNameField ? node.identifier === fullNameField : normId(node.identifier) === "fullname";
+                    if (node.type === "text" && match && node.text) found = String(node.text).trim();
+                    walk(node.structuredDataNodes);
+                });
+            })(asset.structuredData && asset.structuredData.structuredDataNodes);
+            return found;
+        }
+
+        // Note: compare ignoring case, accents and extra spaces, so "Gee-Cié" and "gee-cie " count as the same name
+        function nameKey(name) {
+            return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+        }
+
+        function markDuplicates() {
+            var groups = {};
+            var withName = state.blocks.filter(function(b) { return isBlock(b) && !b.error && b.fullName; });
+            withName.forEach(function(b) {
+                b.nameKey = nameKey(b.fullName);
+                (groups[b.nameKey] = groups[b.nameKey] || []).push(b);
+            });
+            Object.keys(groups).forEach(function(key) {
+                var group = groups[key];
+                if (group.length < 2) return;
+                group.forEach(function(b) {
+                    b.dupOf = group.filter(function(other) { return other !== b; });
+                    b.dupCount = group.length;
+                });
+            });
+            state.namesFound = withName.length;
+            if (state.blocks.some(isBlock) && withName.length === 0) {
+                state.warning = 'No "Full Name" field was found in these blocks, so duplicates could not be checked. Set fullNameField at the top of the script to the field identifier.';
+            }
+        }
+
         /* Audit a block: read it for name, subtype and tags, then list the assets that use it */
         function auditBlock(block) {
             var read = api(function() {
@@ -183,6 +239,7 @@
                 block.path = asset.path || block.path;
                 block.label = key === "xhtmlDataDefinitionBlock" && !asset.structuredData ? "XHTML" : (blockTypeLabels[key] || key);
                 block.tags = (asset.tags || []).map(function(tag) { return tag.name; });
+                block.fullName = findFullName(asset);
             });
             var subscribers = api(function() {
                 return withTimeout(listSubscribers({ type: "block", id: block.id }), "subscribers " + block.path);
@@ -214,7 +271,14 @@
         function renderStatus() {
             var text = "Crawled " + state.folders + " folder(s), found " + state.blocks.filter(isBlock).length + " block(s)";
             if (state.blocks.length) text += ", audited " + state.done + "/" + state.blocks.filter(isBlock).length;
-            document.getElementById("status").textContent = state.finished ? "" : text + "…";
+            document.getElementById("status").textContent = state.finished ? (state.warning || "") : text + "…";
+        }
+
+        function skippedHTML() {
+            if (!state.skipped.length) return "";
+            return "Ignored " + state.skipped.length + " folder(s) and everything inside them: " + state.skipped.map(function(f) {
+                return "<code>" + esc(f.path) + "</code> (" + esc(f.reasons) + ")";
+            }).join(", ") + ".";
         }
 
         function isBlock(b) { return b.type !== "folder"; }
@@ -226,6 +290,7 @@
                 ["Blocks", blocks.length],
                 ["Unused", blocks.filter(function(b) { return !b.error && usedCount(b) === 0; }).length],
                 ["In use", blocks.filter(function(b) { return !b.error && usedCount(b) > 0; }).length],
+                ["Duplicates", blocks.filter(function(b) { return b.dupOf; }).length],
                 ["Untagged", blocks.filter(function(b) { return !b.error && b.tags && b.tags.length === 0; }).length],
                 ["Errors", state.blocks.filter(function(b) { return b.error; }).length]
             ];
@@ -251,6 +316,7 @@
 
         var columns = [
             { key: "name", label: "Block name", value: function(b) { return b.name || ""; } },
+            { key: "fullName", label: "Full name", value: function(b) { return b.nameKey || ""; } },
             { key: "path", label: "Path", value: function(b) { return b.path || ""; } },
             { key: "tags", label: "Tags", value: function(b) { return (b.tags || []).join(", "); } },
             { key: "usedBy", label: "Used by", value: function(b) { return usedCount(b); } }
@@ -269,7 +335,7 @@
 
         function matchesFilter(b, term) {
             if (!term) return true;
-            var haystack = [b.name, b.path, b.label, b.type, b.error]
+            var haystack = [b.name, b.fullName, b.dupOf ? "duplicate" : "", b.path, b.label, b.type, b.error]
                 .concat(b.tags || [])
                 .concat((b.usedBy || []).map(subscriberPath))
                 .join(" ").toLowerCase();
@@ -286,9 +352,15 @@
                 var path = b.id ? '<a href="' + esc(cmsLink(b.id, b.type)) + '" target="_blank">' + esc(b.path) + "</a>" : esc(b.path);
                 if (b.error && !b.name) {
                     return '<tr class="error"><td>' + esc(b.type === "folder" ? "(folder)" : "—") + '</td><td class="path">' + path + "</td>" +
-                        '<td colspan="2"><span class="badge">Error:</span> ' + esc(b.error) + "</td></tr>";
+                        '<td colspan="3"><span class="badge">Error:</span> ' + esc(b.error) + "</td></tr>";
                 }
-                var cls = b.error ? "error" : (usedCount(b) === 0 ? "unused" : "");
+                var cls = (b.error ? "error" : (usedCount(b) === 0 ? "unused" : "")) + (b.dupOf ? " dup" : "");
+                var full = b.fullName ? esc(b.fullName) : '<span class="muted">—</span>';
+                if (b.dupOf) {
+                    full += '<br><span class="dup-badge">Duplicate ×' + b.dupCount + "</span>" + '<ul class="rel">' + b.dupOf.map(function(o) {
+                        return '<li>Same as <a href="' + esc(cmsLink(o.id, o.type)) + '" target="_blank">' + esc(o.path) + "</a></li>";
+                    }).join("") + "</ul>";
+                }
                 var tags = b.tags && b.tags.length ? b.tags.map(function(t) { return '<span class="chip">' + esc(t) + "</span>"; }).join("") : '<span class="muted">untagged</span>';
                 var used;
                 if (b.error) {
@@ -298,7 +370,7 @@
                 } else {
                     used = '<span class="badge">' + usedCount(b) + "</span>" + relatedList(b.usedBy);
                 }
-                return '<tr class="' + cls + '"><td>' + esc(b.name) + '</td><td class="path">' + path + "</td><td>" + tags + "</td><td>" + used + "</td></tr>";
+                return '<tr class="' + cls.trim() + '"><td>' + esc(b.name) + "</td><td>" + full + '</td><td class="path">' + path + "</td><td>" + tags + "</td><td>" + used + "</td></tr>";
             }).join("");
             return "<table><thead>" + head + "</thead><tbody>" + body + "</tbody></table>";
         }
@@ -306,6 +378,7 @@
         function renderReport() {
             var term = document.getElementById("filter").value.trim().toLowerCase();
             document.getElementById("summary").innerHTML = summaryHTML();
+            document.getElementById("skipped").innerHTML = skippedHTML();
             document.getElementById("report").innerHTML = tableHTML(sortedRows().filter(function(b) { return matchesFilter(b, term); }));
         }
 
@@ -334,6 +407,7 @@
                 '<div class="meta">' + document.getElementById("meta").innerHTML + "</div>" +
                 document.getElementById("cleanup").outerHTML +
                 '<div class="summary">' + summaryHTML() + "</div>" +
+                (state.skipped.length ? '<p class="muted">' + skippedHTML() + "</p>" : "") +
                 '<div class="table-wrap">' + tableHTML(sortedRows()) + "</div></body></html>";
             saveFile(html, "text/html", fileBase() + ".html");
         }
@@ -343,9 +417,9 @@
             function rel(items) {
                 return (items || []).map(function(s) { return s.type + " " + subscriberPath(s); }).join("; ");
             }
-            var lines = [["Block name", "Type", "Path", "ID", "CMS link", "Tags", "Used by", "Related assets", "Error"].map(cell).join(",")];
+            var lines = [["Block name", "Full name", "Duplicate", "Duplicate of", "Type", "Path", "ID", "CMS link", "Tags", "Used by", "Related assets", "Error"].map(cell).join(",")];
             sortedRows().forEach(function(b) {
-                lines.push([b.name, b.label || b.type, b.path, b.id, b.id ? cmsLink(b.id, b.type) : "", (b.tags || []).join("; "),
+                lines.push([b.name, b.fullName, b.dupOf ? "Yes" : "No", (b.dupOf || []).map(function(o) { return o.path; }).join("; "), b.label || b.type, b.path, b.id, b.id ? cmsLink(b.id, b.type) : "", (b.tags || []).join("; "),
                     usedCount(b) < 0 ? "" : usedCount(b), rel(b.usedBy), b.error].map(cell).join(","));
             });
             saveFile(lines.join("\r\n"), "text/csv", fileBase() + ".csv");
@@ -368,6 +442,7 @@
         crawlFolder({ path: folderPath, siteName: siteName }).then(function() {
             return Promise.all(state.blocks.filter(function(b) { return isBlock(b) && !b.error; }).map(auditBlock));
         }).then(function() {
+            markDuplicates();
             state.finished = true;
             renderStatus();
             renderReport();
