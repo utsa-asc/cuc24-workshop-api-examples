@@ -5,78 +5,182 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Block Relationship Report</title>
+    <!-- Styled with the UTSA College Design Language System (DESIGN.md). Off *.utsa.edu the Adobe kit does not load, so Google Fonts supply Arsenal and Libre Franklin. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Arsenal:wght@400;700&family=Libre+Franklin:wght@300;400;600;700&display=swap">
     <style id="report-style">
+        /* Layout: navy header band, then alternating off-white (cleanup), grey (summary and controls) and white (table) bands. Text stays at 16pt or larger. */
         :root {
-            --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --border: #d0d7de;
-            --head: #f6f8fa; --unused: #fff4e5; --error: #ffebe9; --chip: #ddf4ff; --chip-fg: #0550ae;
-            --link: #0969da; --dup: #b42318;
+            /* Brand */
+            --navy: #032044; --navy-muted: #495970; --light-blue: #C8DCFF;
+            --orange: #F15A22; --orange-a11y: #D3430D;
+            /* Semantic */
+            --text: #0C2340; --heading: #032044; --link: #032044; --link-hover-bg: #DBDEE3;
+            --muted: #606060; --line: #032044; --focus: #265BF7;
+            --row-alt: #F6F6F6; --unused: #FFF1D6; --error: #FCE4E4; --dup: #B42318;
+            --chip-bg: #C8DCFF; --chip-fg: #032044; --code-bg: rgba(3, 32, 68, .08);
+            /* Type, shape, motion, rhythm */
+            --font-heading: "arsenal", "Arsenal", sans-serif;
+            --font-body: "libre-franklin", "Libre Franklin", "Helvetica Neue", Helvetica, system-ui, Arial, sans-serif;
+            --font-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            --fs: 16pt; --notch: 1.1rem; --transition: all .3s ease-in-out; --section-pad: 3rem; --gutter: 1.5rem;
+            font-size: 18px;
         }
         @media (prefers-color-scheme: dark) {
-            :root {
-                --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --border: #30363d;
-                --head: #161b22; --unused: #3b2a12; --error: #4c1d1d; --chip: #0c2d6b; --chip-fg: #a5d6ff;
-                --link: #4493f8; --dup: #ff7b72;
+            :root:not([data-theme="light"]) {
+                --text: #DEE2E6; --heading: #FFFFFF; --link: #FFFFFF; --link-hover-bg: rgba(255, 255, 255, .18);
+                --muted: #ADB5BD; --line: #495970; --focus: #C8DCFF;
+                --row-alt: rgba(255, 255, 255, .04); --unused: #4A3813; --error: #4C1D1D; --dup: #FF7B72;
+                --chip-bg: #344C6B; --chip-fg: #FFFFFF; --code-bg: rgba(255, 255, 255, .12); color-scheme: dark;
             }
         }
-        body { background: var(--bg); color: var(--fg); font: 16pt/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 24px; }
-        h1 { font-size: 26pt; margin: 0 0 4px; }
-        a { color: var(--link); }
+        :root[data-theme="dark"] {
+            --text: #DEE2E6; --heading: #FFFFFF; --link: #FFFFFF; --link-hover-bg: rgba(255, 255, 255, .18);
+            --muted: #ADB5BD; --line: #495970; --focus: #C8DCFF;
+            --row-alt: rgba(255, 255, 255, .04); --unused: #4A3813; --error: #4C1D1D; --dup: #FF7B72;
+            --chip-bg: #344C6B; --chip-fg: #FFFFFF; --code-bg: rgba(255, 255, 255, .12); color-scheme: dark;
+        }
+
+        /* Band colours: each band names its own background and the card colour that sits on it */
+        .band--white { --band-bg: #FFFFFF; --card-bg: #F6F6F6; }
+        .band--grey { --band-bg: #DBDEE3; --card-bg: #FFFFFF; }
+        .band--off { --band-bg: #F6F6F6; --card-bg: #FFFFFF; }
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) .band--white { --band-bg: #212529; --card-bg: #2C3238; }
+            :root:not([data-theme="light"]) .band--grey { --band-bg: #2A3037; --card-bg: #353C44; }
+            :root:not([data-theme="light"]) .band--off { --band-bg: #262B31; --card-bg: #323840; }
+        }
+        :root[data-theme="dark"] .band--white { --band-bg: #212529; --card-bg: #2C3238; }
+        :root[data-theme="dark"] .band--grey { --band-bg: #2A3037; --card-bg: #353C44; }
+        :root[data-theme="dark"] .band--off { --band-bg: #262B31; --card-bg: #323840; }
+
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #FFFFFF; color: var(--text); font: 400 var(--fs)/1.5 var(--font-body); }
+        @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body { background: #212529; } }
+        :root[data-theme="dark"] body { background: #212529; }
+        h1, h2 { font-family: var(--font-heading); font-weight: 700; color: var(--heading); line-height: 1.2; margin: 0; text-wrap: balance; }
+        h1 { font-size: 2.5rem; }
+        h2 { font-size: 1.75rem; }
+        p { margin: 0; }
+        a { color: var(--link); text-decoration: underline; transition: var(--transition); }
+        a:hover, a:focus, a:active { background-color: var(--link-hover-bg); }
+        code { font-family: var(--font-mono); font-size: 1em; background: var(--code-bg); padding: 1px 6px; overflow-wrap: anywhere; }
+        :where(a, button, input, th[data-sort]):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
         .meta, .muted { color: var(--muted); }
-        .summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
-        .stat { border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; min-width: 90px; }
-        .stat b { display: block; font-size: 24pt; }
-        .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-        .toolbar input { font: inherit; flex: 1 1 320px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
-        button { font: inherit; padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--head); color: var(--fg); cursor: pointer; }
+
+        .container { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter); display: grid; gap: var(--gutter); min-width: 0; }
+        .band { background: var(--band-bg); padding: var(--section-pad) 0; }
+        .band--tight { padding: 2rem 0; }
+        .eyebrow { font-size: var(--fs); text-transform: uppercase; letter-spacing: 2px; }
+
+        /* Navy header band with the diagonal stripe pattern */
+        .navy-band { background-color: var(--navy); color: #FFFFFF; position: relative; padding: var(--section-pad) 0; }
+        .navy-band::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+            background: repeating-linear-gradient(45deg, rgba(0,0,0,0), rgba(0,0,0,0) 2px, rgba(0,0,0,.1) 4px, rgba(0,0,0,0) 7px); }
+        .navy-band > .container { position: relative; gap: .5rem; }
+        .navy-band h1 { color: #FFFFFF; }
+        .navy-band .eyebrow { color: var(--orange); }
+        .navy-band .meta { color: var(--light-blue); }
+
+        /* Cleanup panel: card with orange top rule and notched corner */
+        .card { background: var(--card-bg); border-top: 6px solid var(--orange); padding: 1.4rem 1.4rem 1.6rem; min-width: 0;
+            clip-path: polygon(100% 0, 100% calc(100% - var(--notch)), calc(100% - var(--notch)) 100%, 0 100%, 0 0); }
+        .cleanup h2 { margin-bottom: .5rem; }
+        .cleanup ul { padding-left: 1.4rem; margin: .75rem 0; display: grid; gap: .5rem; }
+        .cleanup .callout { background: var(--light-blue); color: var(--navy); border-left: 6px solid var(--orange); padding: .75rem 1.1rem; margin-top: 1rem; }
+        .cleanup .callout code { background: rgba(3, 32, 68, .1); }
+
+        /* Summary tiles */
+        .summary { display: flex; flex-wrap: wrap; gap: var(--gutter); }
+        .stat { background: var(--card-bg); border-top: 6px solid var(--orange); padding: .6rem 1.4rem 1rem; min-width: 150px; line-height: 1.3;
+            clip-path: polygon(100% 0, 100% calc(100% - var(--notch)), calc(100% - var(--notch)) 100%, 0 100%, 0 0); }
+        .stat b { display: block; font-family: var(--font-heading); font-weight: 700; font-size: 2.4rem; line-height: 1.15; color: var(--heading); font-variant-numeric: tabular-nums; }
+
+        /* Controls */
+        .toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+        .toolbar input { font: inherit; flex: 1 1 320px; padding: 12px 15px; border: 1px solid var(--navy); border-radius: 0; background: #FFFFFF; color: var(--navy); }
+        button { font: inherit; font-weight: 600; padding: 10px 15px; min-width: 168px; text-align: center; border: 0; border-radius: 0;
+            background: var(--navy); color: #FFFFFF; cursor: pointer; transition: var(--transition); }
+        button:hover:not(:disabled) { background: var(--orange-a11y); }
         button:disabled { opacity: .5; cursor: default; }
+        @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button { background: var(--navy-muted); } }
+        :root[data-theme="dark"] button { background: var(--navy-muted); }
+
+        /* Table: navy header, white text, zebra rows, orange sort arrow */
         .table-wrap { overflow-x: auto; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
-        th { background: var(--head); white-space: nowrap; }
+        table { border-collapse: collapse; width: 100%; border: 1px solid var(--line); }
+        th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+        thead th { background: var(--navy); color: #FFFFFF; font-weight: 700; white-space: nowrap; }
+        @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) thead th { background: var(--navy-muted); } }
+        :root[data-theme="dark"] thead th { background: var(--navy-muted); }
         th[data-sort] { cursor: pointer; }
-        tr.unused td { background: var(--unused); }
-        tr.error td { background: var(--error); }
-        td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16pt; word-break: break-all; }
-        ul.rel { margin: 0; padding-left: 16px; }
-        ul.rel li { font-size: 16pt; margin: 2px 0; }
-        .chip { display: inline-block; background: var(--chip); color: var(--chip-fg); border-radius: 14px; padding: 1px 10px; margin: 2px 3px; font-size: 16pt; }
-        .cleanup { border: 1px solid var(--border); background: var(--head); padding: 4px 20px 16px; margin: 16px 0; }
-        .cleanup h2 { font-size: 20pt; margin: 12px 0 4px; }
-        .cleanup ul { padding-left: 24px; margin: 8px 0; }
-        .cleanup li { margin: 6px 0; }
-        code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
-        .cleanup .callout { border-left: 6px solid var(--link); padding: 4px 14px; margin-top: 12px; }
-        tr.dup td:first-child { border-left: 10px solid var(--dup); }
-        .dup-badge { display: inline-block; background: var(--dup); color: #fff; font-weight: 700; font-size: 14pt; padding: 0 10px; margin-top: 4px; }
-        .badge { display: inline-block; font-weight: 600; font-size: 16pt; }
+        th .sort { color: var(--orange); }
+        tbody tr:nth-child(even) td { background: var(--row-alt); }
+        tbody tr.unused td { background: var(--unused); }
+        tbody tr.error td { background: var(--error); }
+        tbody tr.dup td:first-child { border-left: 10px solid var(--dup); }
+        td.path { font-family: var(--font-mono); overflow-wrap: anywhere; min-width: 14rem; }
+        ul.rel { margin: 0; padding-left: 1rem; }
+        ul.rel li { margin: 2px 0; }
+        .chip { display: inline-block; background: var(--chip-bg); color: var(--chip-fg); padding: 1px 10px; margin: 2px 3px 2px 0; }
+        .badge { display: inline-block; font-weight: 700; }
+        .dup-badge { display: inline-block; background: var(--dup); color: #FFFFFF; font-weight: 700; padding: 0 10px; margin-top: 4px; }
+        @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dup-badge { color: #212529; } }
+        :root[data-theme="dark"] .dup-badge { color: #212529; }
+
+        @media (max-width: 576px) { h1 { font-size: 2rem; } h2 { font-size: 1.5rem; } .stat b { font-size: 2rem; } }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
 </head>
 
 <body>
     <script src="../../cascade-restapi.js"></script>
 
-    <h1>Block Relationship Report</h1>
-    <div class="meta" id="meta"></div>
-    <section class="cleanup" id="cleanup">
-        <h2>Suggested first cleanup</h2>
-        <p class="muted">For the profile blocks in <code>about/_profile-blocks</code>, based on the 1 October 2026 run (126 blocks). These counts are a snapshot and do not update with the table below.</p>
-        <ul>
-            <li>Resolve the duplicates: the four people with blocks in two folders, and the two <code>-personnel</code> pairs. Keep the block that is in use, or point the pages at one block, before deleting the other. Blocks that share a Full name are marked Duplicate in the table.</li>
-            <li>Rename to standard: 33 capitalised names, the accented name, <code>wilkerson-steve26</code>, and the <code>-personnel</code> names.</li>
-            <li>Review the 61 unused blocks, following Practice 1 in the profile block standards guide (<code>profile-block-standards.html</code>), starting with <code>_staff</code> (45), then <code>_university_council</code> (13) and <code>_deans</code> (3).</li>
-            <li>Agree what <code>ruby</code> means, then tag consistently.</li>
-        </ul>
-        <p class="callout">Nothing in this report changes any block. Renames, merges and deletions are done by hand in Cascade after the checks above.</p>
-    </section>
-    <div class="summary" id="summary"></div>
-    <div class="toolbar">
-        <input type="search" id="filter" placeholder="Filter by name, path, tag, or page using the block…">
-        <button id="download-html" disabled>Download report (.html)</button>
-        <button id="download-csv" disabled>Download CSV</button>
-    </div>
-    <div class="muted" id="status">Starting…</div>
-    <div class="muted" id="skipped"></div>
-    <div class="table-wrap" id="report"></div>
+    <header class="navy-band">
+        <div class="container">
+            <span class="eyebrow">Cascade CMS audit</span>
+            <h1>Block Relationship Report</h1>
+            <div class="meta" id="meta"></div>
+        </div>
+    </header>
+
+    <main>
+        <section class="band band--off">
+            <div class="container">
+            <section class="card cleanup" id="cleanup">
+                <h2>Suggested first cleanup</h2>
+                <p class="muted">For the profile blocks in <code>about/_profile-blocks</code>, based on the 1 October 2026 run (126 blocks). These counts are a snapshot and do not update with the table below.</p>
+                <ul>
+                    <li>Resolve the duplicates: the four people with blocks in two folders, and the two <code>-personnel</code> pairs. Keep the block that is in use, or point the pages at one block, before deleting the other. Blocks that share a Full name are marked Duplicate in the table.</li>
+                    <li>Rename to standard: 33 capitalised names, the accented name, <code>wilkerson-steve26</code>, and the <code>-personnel</code> names.</li>
+                    <li>Review the 61 unused blocks, following Practice 1 in the profile block standards guide (<code>profile-block-standards.html</code>), starting with <code>_staff</code> (45), then <code>_university_council</code> (13) and <code>_deans</code> (3).</li>
+                    <li>Agree what <code>ruby</code> means, then tag consistently.</li>
+                </ul>
+                <p class="callout">Nothing in this report changes any block. Renames, merges and deletions are done by hand in Cascade after the checks above.</p>
+            </section>
+            </div>
+        </section>
+
+        <section class="band band--grey band--tight">
+            <div class="container">
+                <div class="summary" id="summary"></div>
+                <div class="toolbar">
+                    <input type="search" id="filter" placeholder="Filter by name, path, tag, or page using the block…" aria-label="Filter the table">
+                    <button id="download-html" disabled>Download report (.html)</button>
+                    <button id="download-csv" disabled>Download CSV</button>
+                </div>
+                <div class="muted" id="status">Starting…</div>
+                <div class="muted" id="skipped"></div>
+            </div>
+        </section>
+
+        <section class="band band--white">
+            <div class="container">
+                <div class="table-wrap" id="report"></div>
+            </div>
+        </section>
+    </main>
 
     <script>
         /* Note: This script is READ ONLY. It crawls a folder (and its subfolders) of blocks and reports, for each block:
@@ -344,7 +448,7 @@
 
         function tableHTML(rows) {
             var head = "<tr>" + columns.map(function(c) {
-                var arrow = c.key === state.sortKey ? (state.sortDir === 1 ? " ▲" : " ▼") : "";
+                var arrow = c.key === state.sortKey ? ' <span class="sort">' + (state.sortDir === 1 ? "▲" : "▼") + "</span>" : "";
                 return c.value ? '<th data-sort="' + c.key + '">' + c.label + arrow + "</th>" : "<th>" + c.label + "</th>";
             }).join("") + "</tr>";
             var body = rows.map(function(b) {
@@ -401,14 +505,17 @@
 
         function downloadHTML() {
             var css = document.getElementById("report-style").textContent;
+            var fonts = document.querySelector('link[href*="fonts.googleapis.com/css2"]').outerHTML;
+            // Note: same bands as the live page, minus the search box and download buttons
             var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
-                "<title>Block Relationship Report</title><style>" + css + "</style></head><body>" +
-                "<h1>Block Relationship Report</h1>" +
-                '<div class="meta">' + document.getElementById("meta").innerHTML + "</div>" +
-                document.getElementById("cleanup").outerHTML +
-                '<div class="summary">' + summaryHTML() + "</div>" +
-                (state.skipped.length ? '<p class="muted">' + skippedHTML() + "</p>" : "") +
-                '<div class="table-wrap">' + tableHTML(sortedRows()) + "</div></body></html>";
+                "<title>Block Relationship Report</title>" + fonts + "<style>" + css + "</style></head><body>" +
+                '<header class="navy-band"><div class="container"><span class="eyebrow">Cascade CMS audit</span><h1>Block Relationship Report</h1>' +
+                '<div class="meta">' + document.getElementById("meta").innerHTML + "</div></div></header><main>" +
+                '<section class="band band--off"><div class="container">' + document.getElementById("cleanup").outerHTML + "</div></section>" +
+                '<section class="band band--grey band--tight"><div class="container"><div class="summary">' + summaryHTML() + "</div>" +
+                (state.skipped.length ? '<div class="muted">' + skippedHTML() + "</div>" : "") + "</div></section>" +
+                '<section class="band band--white"><div class="container"><div class="table-wrap">' + tableHTML(sortedRows()) + "</div></div></section>" +
+                "</main></body></html>";
             saveFile(html, "text/html", fileBase() + ".html");
         }
 
