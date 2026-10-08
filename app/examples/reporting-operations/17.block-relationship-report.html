@@ -40,6 +40,12 @@
         ul.rel { margin: 0; padding-left: 16px; }
         ul.rel li { font-size: 16pt; margin: 2px 0; }
         .chip { display: inline-block; background: var(--chip); color: var(--chip-fg); border-radius: 14px; padding: 1px 10px; margin: 2px 3px; font-size: 16pt; }
+        .cleanup { border: 1px solid var(--border); background: var(--head); padding: 4px 20px 16px; margin: 16px 0; }
+        .cleanup h2 { font-size: 20pt; margin: 12px 0 4px; }
+        .cleanup ul { padding-left: 24px; margin: 8px 0; }
+        .cleanup li { margin: 6px 0; }
+        .cleanup code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
+        .cleanup .callout { border-left: 6px solid var(--link); padding: 4px 14px; margin-top: 12px; }
         .badge { display: inline-block; font-weight: 600; font-size: 16pt; }
     </style>
 </head>
@@ -49,6 +55,17 @@
 
     <h1>Block Relationship Report</h1>
     <div class="meta" id="meta"></div>
+    <section class="cleanup" id="cleanup">
+        <h2>Suggested first cleanup</h2>
+        <p class="muted">For the profile blocks in <code>about/_profile-blocks</code>, based on the 1 October 2026 run (126 blocks). These counts are a snapshot and do not update with the table below.</p>
+        <ul>
+            <li>Resolve the duplicates: the four people with blocks in two folders, and the two <code>-personnel</code> pairs. Keep the block that is in use, or point the pages at one block, before deleting the other.</li>
+            <li>Rename to standard: 33 capitalised names, the accented name, <code>wilkerson-steve26</code>, and the <code>-personnel</code> names.</li>
+            <li>Review the 61 unused blocks, following Practice 1 in the profile block standards guide (<code>profile-block-standards.html</code>), starting with <code>_staff</code> (45), then <code>_university_council</code> (13) and <code>_deans</code> (3).</li>
+            <li>Agree what <code>ruby</code> means, then tag consistently.</li>
+        </ul>
+        <p class="callout">Nothing in this report changes any block. Renames, merges and deletions are done by hand in Cascade after the checks above.</p>
+    </section>
     <div class="summary" id="summary"></div>
     <div class="toolbar">
         <input type="search" id="filter" placeholder="Filter by name, path, tag, or page using the block…">
@@ -315,6 +332,7 @@
                 "<title>Block Relationship Report</title><style>" + css + "</style></head><body>" +
                 "<h1>Block Relationship Report</h1>" +
                 '<div class="meta">' + document.getElementById("meta").innerHTML + "</div>" +
+                document.getElementById("cleanup").outerHTML +
                 '<div class="summary">' + summaryHTML() + "</div>" +
                 '<div class="table-wrap">' + tableHTML(sortedRows()) + "</div></body></html>";
             saveFile(html, "text/html", fileBase() + ".html");
